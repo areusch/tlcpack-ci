@@ -1,0 +1,143 @@
+---
+- name: install docker
+  hosts: all
+  remote_user: ubuntu
+  become: yes
+  become_user: root
+
+  tasks:
+   - name: Add docker APT key
+     ansible.builtin.apt_key:
+       url: https://download.docker.com/linux/ubuntu/gpg
+     when: ansible_facts["architecture"] == "x86_64"
+   - name: Add docker APT repo
+     ansible.builtin.apt_repository:
+       repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+     when: ansible_facts["architecture"] == "x86_64"
+
+# NOTE: does not seem to be needed on this ARM image.
+#   - name: Add docker APT repo
+#     ansible.builtin.apt_repository:
+#       repo: deb [arch=aarch64] https://download.docker.com/linux/ubuntu focal stable
+#     when: ansible_facts["architecture"] == "aarch64"
+
+   - name: Install APT packages
+     apt:
+      name:
+        - apt-transport-https
+        - docker-ce
+        - ca-certificates
+        - curl
+        - software-properties-common
+      update_cache: yes
+   - name: Add jenkins user
+     ansible.builtin.user:
+       name: jenkins
+       append: yes
+       groups: docker
+   - name: Add ubuntu to docker
+     ansible.builtin.user:
+       name: ubuntu
+       append: yes
+       groups: docker
+   - name: Reset connection
+     ansible.builtin.meta: reset_connection
+
+- name: Install Jenkins
+  hosts: jenkins-head-node
+  remote_user: ubuntu
+
+  tasks:
+   - name: install python pip
+     apt:
+       name:
+         - python3-pip
+     become: yes
+     become_user: root
+
+   - name: Install docker python library
+     ansible.builtin.pip:
+       name: docker
+
+   - name: Run docker to make it work post-install
+     ansible.builtin.shell:
+       cmd: "docker ps"
+
+   - name: Pull jenkins
+     docker_image:
+       name: "{{ jenkins_master_container_tag }}"
+       source: pull
+
+   - name: Install setfacl to work around unpriviliged become issue
+     apt:
+       name:
+         - acl
+     become: yes
+     become_user: root
+
+   - name: Copy Jenkins homedir archive
+     ansible.builtin.copy:
+       src: "{{ jenkins_homedir_tar_gz }}"
+       dest: /home/jenkins/jenkins-homedir.tar.gz
+       owner: jenkins
+       group: jenkins
+     become: yes
+     become_user: jenkins
+
+   - name: Unarchive Jenkins homedir
+     ansible.builtin.unarchive:
+       remote_src: yes
+       src: /home/jenkins/jenkins-homedir.tar.gz
+       dest: /home/jenkins
+       owner: jenkins
+       group: jenkins
+     become: yes
+     become_user: jenkins
+
+   - name: chown jenkins homedir
+     ansible.builtin.shell: |
+       set -xe
+       docker_uid=$(docker run --entrypoint /usr/bin/id {{ jenkins_master_container_tag }} -u)
+       sudo chown -R ${docker_uid}:${docker_uid} /home/jenkins/jenkins-homedir
+
+   - name: Install Jenkins SystemD service
+     template:
+       src: ./systemd/head-node.conf.tpl
+       dest: /etc/systemd/system/jenkins.service
+       mode: 0644
+       owner: root
+       group: root
+     become: yes
+     become_user: root
+
+   - name: Launch Jenkins service
+     ansible.builtin.systemd:
+       state: started
+       name: jenkins
+       daemon_reload: yes
+
+     become: yes
+     become_user: root
+
+- name: Setup Jenkins Executor
+  hosts: executors
+  remote_user: ubuntu
+
+  tasks:
+    - name: Create .ssh dir
+      ansible.builtin.file:
+        path: /home/jenkins/.ssh
+        state: directory
+        mode: 0755
+      become: yes
+      become_user: root
+
+    - name: Copy Jenkins SSH key
+      ansible.builtin.copy:
+        src: "{{ executor_ssh_public_key }}"
+        dest: /home/jenkins/.ssh/authorized_keys
+        mode: 0644
+        owner: jenkins
+        group: jenkins
+      become: yes
+      become_user: root

@@ -1,0 +1,26 @@
+docker:
+    jenkins_container_name: areusch1/jenkins-test
+
+cluster:
+    terraform_s3_state_bucket_name: areusch-ci-bucket-us-east-2
+    aws_region: us-east-2
+    aws_profile_name: terraform
+    nodes:
+        arm:
+            num_nodes: 1
+            num_executors: 1
+            labels: [ARM]
+        gpu:
+            num_nodes: 1
+            num_executors: 2
+            labels: [GPU, GPUBUILD, TensorCore, doc]
+        cpu:
+            num_nodes: 2
+            num_executors: 2
+            labels: [CPU]
+    name_prefix: areusch-
+    dns_suffix: tvm.octoml.ai
+
+jenkins:
+    admin_github_usernames: [areusch]
+    review_bot_github_username: areusch

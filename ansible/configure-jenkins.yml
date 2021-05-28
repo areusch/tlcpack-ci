@@ -1,0 +1,24 @@
+---
+# This playbook contains entries needed to configure Jenkins. It can either be run locally to
+# bootstrap the Jenkins homedir, or on a prod Jenkins instance.
+- name: Apply Jenkins CasC config
+  hosts: jenkins-head-node
+  remote_user: ubuntu
+
+  tasks:
+   - name: copy jenkins config
+     ansible.builtin.copy:
+       src: "{{ jenkins_config_path }}"
+       dest: /home/ubuntu/jenkins.yml
+       owner: ubuntu
+       group: ubuntu
+
+   - name: chown CasC config
+     ansible.builtin.shell: |
+       set -xe
+       docker_uid=$(docker run --entrypoint /usr/bin/id {{ jenkins_master_container_tag }} -u)
+       sudo cp ~/jenkins.yml /home/jenkins/jenkins-homedir/jenkins.yml
+       sudo chown ${docker_uid}:${docker_uid} /home/jenkins/jenkins-homedir/jenkins.yml
+
+   - name: reload Jenkins config
+     local_action: ansible.builtin.shell poetry run python -m tvm_ci.reload_jenkins_casc

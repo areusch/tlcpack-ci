@@ -1,0 +1,16 @@
+# Files populated as part of the environment setup.
+/poetry.toml
+/poetry.lock
+/Makefile
+
+# Terraform
+.terraform
+.terraform.lock.hcl
+
+# Python
+*.pyc
+__pycache__
+
+# The build system
+/build
+/jenkins-builder
